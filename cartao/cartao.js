@@ -1,0 +1,30 @@
+'use strict';
+(async()=>{
+ const query=new URLSearchParams(location.search),test=query.get('pimenta_ambiente')==='teste';
+ const clean=s=>/@|%40|\d{10,14}/i.test(s||'')?'':String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9._-]/g,'_').slice(0,100);
+ const attribution=Object.fromEntries(['source','medium','campaign','content'].map(k=>[k,clean(query.get('utm_'+k)||({source:'cartao_digital',medium:'link',campaign:'pimenta_connect_2026',content:'pagina'}[k]))]));
+ for(const a of document.querySelectorAll('[data-carry-utm]')){const u=new URL(a.href);for(const [k,v]of Object.entries(attribution))if(v)u.searchParams.set('utm_'+k,v);a.href=u.href;}
+ const context='Origem: '+[attribution.source,attribution.medium,attribution.campaign,attribution.content].filter(Boolean).join(' / ');
+ const wa=document.querySelector('[data-channel="whatsapp"]');if(wa){const u=new URL(wa.href);u.searchParams.set('text','Olá, Juliana! Conheci a Pimenta IA & Analytics pelo cartão e gostaria de conversar sobre minha empresa.\n\n'+context);wa.href=u.href;}
+ const mail=document.querySelector('[data-channel="email"]');if(mail)mail.href='mailto:ajulianapimenta17@gmail.com?subject='+encodeURIComponent('Contato pelo cartão — Pimenta IA & Analytics')+'&body='+encodeURIComponent('Olá, Juliana! Gostaria de conversar sobre uma necessidade da minha empresa.\n\n'+context);
+ const pref=document.getElementById('privacy-preferences'),banner=document.getElementById('consent-banner'),status=document.getElementById('integration-status');
+ let config;try{const r=await fetch('./cartao-config.json',{cache:'no-store'});if(!r.ok)throw Error();config=await r.json();}catch{config={analyticsEnabled:false,leadCaptureEnabled:false,status:'Medição indisponível. Nenhum evento é transmitido.'};}
+ if(config.collectorOrigin!=='https://pimenta-growth-ju.glassycarp15.chatgpt.site')config.analyticsEnabled=config.leadCaptureEnabled=false;
+ status.textContent=config.analyticsEnabled?'Medição opcional, somente com sua autorização. Cliques na agenda não confirmam reserva.':config.status;
+ if(test){document.getElementById('test-banner').hidden=false;}
+ const key='pimenta-card-'+(test?'test':'production')+'-',policy=config.policyVersion||'2026-11-23';
+ const storage={get(k){try{return localStorage.getItem(key+k);}catch{return null;}},set(k,v){try{localStorage.setItem(key+k,v);}catch{}},remove(k){try{localStorage.removeItem(key+k);}catch{}}};
+ let consent=false,visitor='',session='',firstTouch=attribution;
+ try{const p=JSON.parse(storage.get('consent')||'null');consent=!!p&&p.policy===policy&&p.accepted===true&&Date.now()-p.at<180*86400000;}catch{}
+ function reset(){consent=false;visitor=session='';storage.remove('visitor');try{sessionStorage.removeItem(key+'session');sessionStorage.removeItem(key+'firstTouch');}catch{}}
+ function identifiers(){visitor=storage.get('visitor')||crypto.randomUUID();storage.set('visitor',visitor);try{session=sessionStorage.getItem(key+'session')||crypto.randomUUID();sessionStorage.setItem(key+'session',session);firstTouch=JSON.parse(sessionStorage.getItem(key+'firstTouch')||'null')||attribution;sessionStorage.setItem(key+'firstTouch',JSON.stringify(firstTouch));}catch{session=crypto.randomUUID();}}
+ async function track(event){if(!config.analyticsEnabled||!consent)return;try{await fetch(config.collectorOrigin+'/api/public/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),visitorId:visitor,sessionId:session,event,path:location.pathname,consent:true,policyVersion:policy,test,...attribution}),keepalive:true,credentials:'omit'});}catch{}}
+ if(config.analyticsEnabled){if(consent){identifiers();track('page_view');}else banner.hidden=false;}
+ pref.addEventListener('click',()=>{if(config.analyticsEnabled){banner.hidden=false;banner.querySelector('button').focus();}else{status.textContent=config.status;status.scrollIntoView({block:'nearest',behavior:'smooth'});}});
+ document.getElementById('consent-accept').addEventListener('click',()=>{storage.set('consent',JSON.stringify({accepted:true,at:Date.now(),policy}));consent=true;identifiers();banner.hidden=true;track('page_view');});
+ document.getElementById('consent-reject').addEventListener('click',()=>{reset();storage.set('consent',JSON.stringify({accepted:false,at:Date.now(),policy}));banner.hidden=true;status.textContent='Analytics recusado. Nenhum evento de navegação será transmitido.';});
+ document.addEventListener('click',e=>{const a=e.target.closest('[data-growth-event]');if(a)track(a.dataset.growthEvent);});
+ // A voluntary contact request is independent of optional analytics consent.
+ const section=document.getElementById('request-section'),form=document.getElementById('contact-form');section.hidden=!config.leadCaptureEnabled;
+ if(config.leadCaptureEnabled)form.addEventListener('submit',async e=>{e.preventDefault();const out=document.getElementById('form-result'),button=form.querySelector('button[type=submit]');if(!form.reportValidity())return;button.disabled=true;track('form_submit');out.textContent='Registrando solicitação…';const fd=new FormData(form);try{const r=await fetch(config.collectorOrigin+'/api/public/leads',{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({operationId:form.dataset.operationId||(form.dataset.operationId=crypto.randomUUID()),name:fd.get('name'),company:fd.get('company'),email:fd.get('email'),solution:fd.get('solution'),challenge:fd.get('challenge'),privacyAcknowledged:fd.get('privacy')==='on',policyVersion:policy,website:fd.get('website'),test,...attribution,...(consent?{firstTouch}:{})})});const d=await r.json();if(!r.ok)throw Error(d.error||'Não foi possível registrar.');out.textContent=d.message+(test?' (Ambiente de teste.)':'');form.reset();delete form.dataset.operationId;track('form_success');}catch(err){out.textContent=err.message+' Você também pode usar WhatsApp, e-mail ou agenda.';track('form_error');}finally{button.disabled=false;}});
+})();
