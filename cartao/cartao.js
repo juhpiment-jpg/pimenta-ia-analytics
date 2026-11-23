@@ -1,7 +1,7 @@
 'use strict';
 (async()=>{
  const query=new URLSearchParams(location.search),test=query.get('pimenta_ambiente')==='teste';
- const clean=s=>/@|%40|\d{10,14}/i.test(s||'')?'':String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9._-]/g,'_').slice(0,100);
+ const clean=s=>/@|%40|^\+?\d{10,14}$/i.test(s||'')?'':String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9._-]/g,'_').slice(0,100);
  const attribution=Object.fromEntries(['source','medium','campaign','content'].map(k=>[k,clean(query.get('utm_'+k)||({source:'cartao_digital',medium:'link',campaign:'pimenta_connect_2026',content:'pagina'}[k]))]));
  for(const a of document.querySelectorAll('[data-carry-utm]')){const u=new URL(a.href);for(const [k,v]of Object.entries(attribution))if(v)u.searchParams.set('utm_'+k,v);a.href=u.href;}
  const context='Origem: '+[attribution.source,attribution.medium,attribution.campaign,attribution.content].filter(Boolean).join(' / ');
